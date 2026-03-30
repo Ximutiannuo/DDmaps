@@ -1671,24 +1671,55 @@
                 const driverId = driver.id || driver.driver_id || '未知';
                 const item = document.createElement('div');
                 item.className = 'node-item';
-                item.style.cursor = 'pointer';
-                item.style.padding = '10px';
-                item.style.marginBottom = '5px';
-                item.style.border = '1px solid #ddd';
-                item.style.borderRadius = '5px';
-                item.innerHTML = `
-                    <div class="node-item-info">
-                        <strong>${driver.name || driverId}</strong> (ID: ${driverId})<br>
-                        ${driver.license_plate ? `<span style="color: #3498db;">车牌: ${driver.license_plate}</span><br>` : ''}
-                        ${driver.phone || driver.contact ? `<span style="color: #27ae60;">电话: ${driver.phone || driver.contact}</span><br>` : ''}
-                        <span style="color: #7f8c8d; font-size: 12px;">车辆类型: ${driver.vehicle_type || '未设置'}</span>
-                    </div>
+                item.style.cssText = 'cursor:pointer;padding:10px;margin-bottom:5px;border:1px solid #ddd;border-radius:5px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;';
+                
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'node-item-info';
+                infoDiv.style.flex = '1';
+                infoDiv.innerHTML = `
+                    <strong>${escapeHtml(driver.name || driverId)}</strong> <span style="color:#888;font-size:12px;">(ID: ${escapeHtml(driverId)})</span><br>
+                    ${driver.license_plate ? `<span style="color:#3498db;">车牌: ${escapeHtml(driver.license_plate)}</span><br>` : ''}
+                    ${driver.phone || driver.contact ? `<span style="color:#27ae60;">电话: ${escapeHtml(driver.phone || driver.contact)}</span><br>` : ''}
+                    <span style="color:#7f8c8d;font-size:12px;">车辆类型: ${escapeHtml(driver.vehicle_type || '未设置')}</span>
                 `;
-                item.addEventListener('click', () => {
-                    showDriverDetail(driver);
+                infoDiv.addEventListener('click', () => showDriverDetail(driver));
+
+                const delBtn = document.createElement('button');
+                delBtn.textContent = '删除';
+                delBtn.title = `删除司机 ${driver.name || driverId}`;
+                delBtn.style.cssText = 'background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;flex-shrink:0;white-space:nowrap;line-height:1.6;';
+                delBtn.addEventListener('mouseenter', () => { delBtn.style.background = '#c0392b'; });
+                delBtn.addEventListener('mouseleave', () => { delBtn.style.background = '#e74c3c'; });
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteDriver(driverId, driver.name || driverId);
                 });
+
+                item.appendChild(infoDiv);
+                item.appendChild(delBtn);
                 listEl.appendChild(item);
             });
+        }
+
+        // 删除司机
+        async function deleteDriver(driverId, driverName) {
+            const confirmed = confirm(`确认删除司机「${driverName}」(${driverId}) ？\n\n该司机将从系统中注销，地图上的关联车辆也将同步移除。`);
+            if (!confirmed) return;
+
+            const result = await apiCall(`/drivers/${encodeURIComponent(driverId)}`, { method: 'DELETE' });
+            if (result.success) {
+                showSuccess(result.message || `司机 ${driverId} 已删除`);
+                // 如果删除的是当前活跃司机，清空活跃状态
+                if (activeDriverId === driverId) {
+                    activeDriverId = null;
+                }
+                // 刷新司机列表和车辆列表
+                await fetchDrivers();
+                await fetchVehicles();
+                safeRenderMap();
+            } else {
+                showError(result.message || `删除司机 ${driverId} 失败`);
+            }
         }
         
         // 显示司机详细信息

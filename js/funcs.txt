@@ -1,0 +1,241 @@
+916: function t(key, defaultValue = '') {
+922: function loadLanguage(lang) {
+982: function updateDynamicButtonTexts() {
+1009: function initLanguage() {
+1015: function initLanguageSwitcher() {
+1058: function showToast(message, type = 'info', duration = 3000) {
+1072: toast.innerHTML = `
+1092: function setButtonLoading(button, loading = true) {
+1112: function enhanceButton(buttonId, handler, options = {}) {
+1152: function validateForm(formElement) {
+1180: function shouldShowNode(node) {
+1239: function applyMapRotation(rotation) {
+1323: function updateMapUploadMessage(html) {
+1326: messageEl.innerHTML = html.trim();
+1330: function resetMapFileInput() {
+1340: function getDownloadJsonFile() {
+1395: function getVehicleSpeed(config) {
+1410: function safeAddEventListener(elementId, eventType, handler, options) {
+1429: function getDebounce() {
+1435: return function executedFunction(...args) {
+1446: function getThrottle() {
+1452: return function executedFunction(...args) {
+1481: function requestRender() {
+1592: async function checkServerHealth() {
+1632: function updateConnectionIndicator() {
+1642: function getApiCall() {
+1800: function getInitWebSocket() {
+1926: function getUpdateConnectionStatus() {
+1950: function getInitCharts() {
+2113: function getUpdateEfficiencyChart() {
+2161: function getUpdateVehicleTypeChart() {
+2196: function getUpdateCongestionChart() {
+2235: function getUpdateAllCharts() {
+2276: async function loadSystemData() {
+2386: async function initializeSystem() {
+2426: function showError(message, errorType = ErrorType.UNKNOWN, retryFn = null, details = null) {
+2455: errorDiv.innerHTML = `
+2501: function handleError(error, context = '') {
+2524: function showSuccess(message) {
+2550: function formatDistance(distance) {
+2561: function formatSpeed(speed) {
+2569: function formatDateTime(isoString) {
+2576: function escapeHtml(value) {
+2589: async function fetchVehicles() {
+2636: async function fetchMonitorData() {
+2671: async function fetchTravelTimeDatabase(limit = 200) {
+2680: async function exportTravelTimeDatabase() {
+2701: async function exportTravelTimeDatabaseExcel() {
+2728: async function handleTravelDbFileChange(event) {
+2806: function renderTravelTimeDatabase(records = travelTimeRecords) {
+2814: summaryEl.innerHTML = '暂无数据';
+2815: tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding: 12px;">暂无数据</td></tr>';
+2831: summaryEl.innerHTML = `
+2839: tbody.innerHTML = displayRecords.map(record => {
+2881: async function fetchRoads() {
+2897: async function fetchDqnStatus(showToast = false) {
+2933: async function trainDqnModel() {
+2981: function formatRouteEdges(edges) {
+2994: async function runDqnRoutePlanner() {
+2997: outputEl.innerHTML = '规划中...';
+3029: outputEl.innerHTML = `
+3049: function renderCustomRouteOverlay(edgesList, highlight = false) {
+3078: async function fetchVehicleTypes() {
+3093: async function fetchDrivers(selectedDriverId = null) {
+3122: function populateDriverForm(driver) {
+3153: function updateDriverList() {
+3159: listEl.innerHTML = '<div class="loading">暂无已注册司机</div>';
+3163: listEl.innerHTML = '';
+3174: infoDiv.innerHTML = `
+3201: async function deleteDriver(driverId, driverName) {
+3220: function showDriverDetail(driver) {
+3230: content.innerHTML = `
+3268: function updateDriverSummary() {
+3273: summaryEl.innerHTML = `
+3281: function updateDriverHistory() {
+3288: historyEl.innerHTML = '';
+3290: historyEl.innerHTML = '<div class="loading">尚无历史记录</div>';
+3302: item.innerHTML = `
+3314: function renderDriverRouteResult(route) {
+3319: resultEl.innerHTML = '<div class="vehicle-info">尚未进行路线规划</div>';
+3329: resultEl.innerHTML = `
+3337: async function registerDriverInfo() {
+3372: async function previewDriverRoute() {
+3420: async function addVehicleToBackend(vehicleData) {
+3438: async function startDispatchBackend() {
+3453: async function stopDispatchBackend() {
+3468: async function addNodeToBackend(nodeData) {
+3484: async function deleteNodeFromBackend(nodeId) {
+3499: async function addEdgeToBackend(edgeData) {
+3515: async function resetSystemBackend() {
+3530: async function manualReroute(affectedEdges = null) {
+3546: async function setEdgeCongestion(edgeId, congested) {
+3563: async function setNodeCongestion(nodeId, congestionLevel) {
+3580: async function setEdgeStatus(edgeId, status) {
+3597: async function setEdgeDirection(edgeId, direction) {
+3613: async function updateVehicleTypeConfig(vehicleType, config) {
+3628: async function addVehicleTypeToBackend(vehicleTypeData) {
+3644: async function updateNodePositionToBackend(nodeId, x, y) {
+3659: async function syncAllNodePositions() {
+3673: function updateCongestionEdgeSelect() {
+3675: congestionEdgeSelect.innerHTML = '<option value="">请选择道路</option>';
+3688: function updateDirectionEdgeSelect() {
+3690: directionEdgeSelect.innerHTML = '<option value="">请选择道路</option>';
+3703: function updateVehicleTypeSelect() {
+3708: vehicleTypeSelect.innerHTML = '';
+3711: driverVehicleTypeSelect.innerHTML = '';
+3736: function updateClearVehicleTypeSelect() {
+3746: clearVehicleTypeSelect.innerHTML = '<option value="">全部</option>';
+3763: function initMonitorData() {
+3790: function initCanvas() {
+3865: function screenToMap(screenX, screenY) {
+3881: function mapToScreen(mapX, mapY) {
+3892: function isInViewport(mapX, mapY, radius = 50) {
+3903: function renderMapCanvas() {
+4353: function renderMap() {
+4371: function decimalToDMS(decimal, isLatitude) {
+4395: function dmsToDecimal(degrees, minutes, seconds, direction) {
+4404: function parseDMSString(dmsString) {
+4472: function handleFullCoordinateInput(type) {
+4540: async function showGpsCalibrationDialog(nodeId) {
+4580: content.innerHTML = `
+4782: protocolError.innerHTML = `
+4984: errorContent.innerHTML = `
+5130: function renderMapDOM() {
+5189: // 注意：不要使用 map.innerHTML = ''，这会清除包括 Canvas 在内的所有内容
+5191: // map.innerHTML = '';
+5576: gpsBtn.innerHTML = '📍';
+5806: // 注意：由于前面已经有 map.innerHTML = ''，所以不需要清除旧的路径元素
+5838: function safeRenderMap() {
+5861: function centerMapContent(forceCenter = false) {
+5982: function renderDriverRoute(route) {
+6050: function makeNodeDraggable(nodeEl, node) {
+6056: function startDrag(e) {
+6067: function drag(e) {
+6089: function stopDrag() {
+6102: function calculateMenuPosition(clientX, clientY, menuWidth, menuHeight) {
+6134: function showNodeCongestionMenu(event, node, currentCongestion) {
+6158: menu.innerHTML = `
+6281: function showEdgeDirectionMenu(event, edge, currentStatus) {
+6317: menu.innerHTML = `
+6453: function showEdgeStatusMenu(event, edge, currentStatus) {
+6471: menu.innerHTML = `
+6548: function getVehicleClass(type) {
+6559: function renderVehiclePath(vehicle) {
+6678: function updateVehicleList(sortByEfficiency = false) {
+6680: vehicleList.innerHTML = '';
+6692: vehicleList.innerHTML = '<div class="loading">暂无车辆</div>';
+6706: leftDiv.innerHTML = `<strong>${vehicle.id}</strong> - ${vehicle.type}
+6715: rightDiv.innerHTML = `起点: ${getNodeName(vehicle.start_node)}<br>目标: ${getNodeName(vehicle.target_node)}<br><small>效率: ${eff}</small>`;
+6725: function getNodeName(nodeId) {
+6731: function updateNodeList() {
+6733: nodeList.innerHTML = '';
+6736: nodeList.innerHTML = '<div class="loading">暂无节点，请添加节点</div>';
+6743: nodeItem.innerHTML = `
+6801: async function saveNodeName(nodeId, name) {
+6831: async function toggleNodeVisibility(nodeId, isVisible) {
+6859: async function deleteNode(nodeId) {
+6869: function updateNodeSelects() {
+6879: if (startNodeSelect) startNodeSelect.innerHTML = '';
+6880: if (endNodeSelect) endNodeSelect.innerHTML = '';
+6881: if (targetNodeSelect) targetNodeSelect.innerHTML = '';
+6882: if (startNodeVehicleSelect) startNodeVehicleSelect.innerHTML = '';
+6883: if (driverStartSelect) driverStartSelect.innerHTML = '';
+6884: if (driverTargetSelect) driverTargetSelect.innerHTML = '';
+6885: if (dqnStartSelect) dqnStartSelect.innerHTML = '';
+6886: if (dqnTargetSelect) dqnTargetSelect.innerHTML = '';
+6961: function updateRoadInfo() {
+6970: roadStats.innerHTML = '<div class="loading">正在加载路网数据...</div>';
+6971: roadList.innerHTML = '<div class="loading">正在加载道路数据...</div>';
+6977: congestionNodeSelect.innerHTML = '<option value="">请选择节点</option>';
+6988: statusEdgeSelect.innerHTML = '<option value="">请选择道路</option>';
+6999: congestionEdgeSelect.innerHTML = '<option value="">请选择道路</option>';
+7010: directionEdgeSelect.innerHTML = '<option value="">请选择道路</option>';
+7028: roadStats.innerHTML = `
+7036: roadList.innerHTML = '';
+7057: roadItem.innerHTML = `
+7077: async function saveEdgeName(edgeId, name, formatOptions = {}) {
+7109: function updateMapLabelsList() {
+7114: listEl.innerHTML = '<div class="loading">暂无文字框</div>';
+7118: listEl.innerHTML = '';
+7122: item.innerHTML = `
+7154: async function addMapLabelAtPosition(x, y) {
+7197: async function editMapLabel(labelId) {
+7204: form.innerHTML = `
+7312: async function deleteMapLabel(labelId) {
+7335: function editNodeNameOnMap(node) {
+7341: form.innerHTML = `
+7440: function editEdgeNameOnMap(edge) {
+7446: form.innerHTML = `
+7545: function makeLabelDraggable(labelEl, label) {
+7596: function updateVehicleTypesList() {
+7598: vehicleTypesList.innerHTML = '';
+7601: vehicleTypesList.innerHTML = '<div class="loading">暂无车辆类型配置</div>';
+7609: typeItem.innerHTML = `
+7633: function showVehicleTypeConfigForm(vehicleType) {
+7645: form.innerHTML = `
+7694: function updateMonitorData() {
+7699: monitorDataEl.innerHTML = '<div class="loading">正在加载监控数据...</div>';
+7711: monitorDataEl.innerHTML = `
+7718: dispatchResultsEl.innerHTML = '';
+7746: resultItem.innerHTML = `
+7758: dispatchResultsEl.innerHTML = '<div class="loading">暂无调度结果</div>';
+7769: arrivalSummaryEl.innerHTML = '暂无到达数据';
+7775: arrivalSummaryEl.innerHTML = `
+7787: routeStatsEl.innerHTML = '<div class="loading">暂无路线统计</div>';
+7789: routeStatsEl.innerHTML = entries
+7823: arrivalListEl.innerHTML = '<div class="loading">暂无到达记录</div>';
+7826: arrivalListEl.innerHTML = latestRecords.map(record => `
+7849: async function fetchMapLabels() {
+7862: async function fetchMapBackground() {
+7908: async function saveMapBackground(backgroundData) {
+7937: async function deleteMapBackground() {
+7962: async function importDxfFile(file) {
+8013: async function convertDxfToJson(file) {
+8037: async function importJsonRoadnet(jsonData) {
+8051: async function exportJsonRoadnet() {
+8065: function initCanvasInteraction() {
+8163: function setupEventListeners() {
+8212: async function init() {
+8577: async function fetchServerInfo(forceRefresh = false) {
+8634: function updateServerInfoUI(result, currentOrigin, driverUrl, urlInput) {
+8648: infoDiv.innerHTML = html;
+8662: function showBasicServerInfo(currentOrigin, showError = false) {
+8670: infoDiv.innerHTML = html;
+8675: function generateDriverUrl() {
+8686: function updateDriverUrl() {
+8738: async function initQrcodeUrl() {
+8771: function generateQRCode() {
+8790: qrcodeDiv.innerHTML = '';
+8806: hintDiv.innerHTML = '💡 使用公网地址，手机可通过互联网直接访问';
+8809: hintDiv.innerHTML = '⚠️ 使用局域网地址，请确保手机和服务器在同一网络';
+8813: hintDiv.innerHTML = '';
+8822: function copyDriverUrl() {
+9030: function handleDxfSelection(file) {
+9148: function handleMapFile(file) {
+9180: function handleJsonFile(file) {
+9232: function updateMapTransform() {
+9293: function updateMapScale(scale, mouseX = null, mouseY = null) {
+9863: function findColumnIndex(headerRow, possibleNames) {
+10030: async function loadMapRotation() {
+10051: async function saveMapRotation(rotation) {

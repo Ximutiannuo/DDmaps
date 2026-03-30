@@ -95,6 +95,40 @@ def get_driver(driver_id):
             'driver': driver
         })
 
+@bp.route('/drivers/<driver_id>', methods=['DELETE'])
+@api_handler
+def delete_driver(driver_id):
+    """删除司机（同时移除地图上的关联车辆）"""
+    with system_state.lock:
+        drivers = system_state.get('drivers', {})
+        
+        if driver_id not in drivers:
+            return jsonify({'success': False, 'message': f'司机 {driver_id} 未注册'}), 404
+        
+        driver_name = drivers[driver_id].get('name', driver_id)
+        
+        # 删除司机记录
+        del drivers[driver_id]
+        system_state.set('drivers', drivers)
+        
+        # 删除司机路线历史
+        driver_routes = system_state.get('driver_routes', {})
+        if driver_id in driver_routes:
+            del driver_routes[driver_id]
+            system_state.set('driver_routes', driver_routes)
+        
+        # 移除地图上该司机关联的所有车辆
+        vehicles = system_state.get('vehicles', [])
+        removed_vehicles = [v.get('id') for v in vehicles if v.get('driver_id') == driver_id]
+        vehicles = [v for v in vehicles if v.get('driver_id') != driver_id]
+        system_state.set('vehicles', vehicles)
+        
+        return jsonify({
+            'success': True,
+            'message': f'司机 {driver_name}（{driver_id}）已删除',
+            'removed_vehicles': removed_vehicles
+        })
+
 @bp.route('/drivers/<driver_id>/route-preview', methods=['POST'])
 @api_handler
 def driver_route_preview(driver_id):

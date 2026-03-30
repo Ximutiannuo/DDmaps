@@ -2803,6 +2803,10 @@
             }
         }
 
+        // 缓存历史记录渲染结果
+        let lastTravelDbHash = '';
+        let lastTravelDbHtml = '';
+
         function renderTravelTimeDatabase(records = travelTimeRecords) {
             const summaryEl = document.getElementById('travel-db-summary');
             const tbody = document.getElementById('travel-db-tbody');
@@ -2811,10 +2815,19 @@
             }
 
             if (!records || records.length === 0) {
-                summaryEl.innerHTML = '暂无数据';
-                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding: 12px;">暂无数据</td></tr>';
+                if (summaryEl.innerHTML !== '暂无数据') summaryEl.innerHTML = '暂无数据';
+                const emptyRow = '<tr><td colspan="10" style="text-align:center; padding: 12px;">暂无数据</td></tr>';
+                if (tbody.innerHTML !== emptyRow) tbody.innerHTML = emptyRow;
                 return;
             }
+
+            // 计算是否需要整体重新渲染的历史记录哈希
+            const currentHash = records.length + '_' + (records[records.length - 1]?.start_time || '');
+            if (currentHash === lastTravelDbHash && lastTravelDbHtml) {
+                // 如果数据条数和最后一条更新时间不变，直接跳过全表 DOM 构建，极大节省高频滚动卡顿
+                return; 
+            }
+            lastTravelDbHash = currentHash;
 
             const totalCount = records.length;
             const totalDuration = records.reduce((sum, rec) => sum + (parseFloat(rec.duration_minutes) || 0), 0);
@@ -2828,15 +2841,16 @@
                 ? speedValues.reduce((sum, value) => sum + value, 0) / speedValues.length
                 : 0;
 
-            summaryEl.innerHTML = `
+            const summaryHtml = `
                 <strong>记录总数:</strong> ${totalCount} 条<br>
                 <strong>平均耗时:</strong> ${avgDuration ? avgDuration.toFixed(2) + ' 分钟' : '-'}<br>
                 <strong>平均速度:</strong> ${avgSpeed ? avgSpeed.toFixed(2) + ' km/h' : '-'}<br>
                 <strong>累计距离:</strong> ${formatDistance(totalDistance)}
             `;
+            if (summaryEl.innerHTML !== summaryHtml) summaryEl.innerHTML = summaryHtml;
 
             const displayRecords = records.slice(-100).reverse();
-            tbody.innerHTML = displayRecords.map(record => {
+            const newTbodyHtml = displayRecords.map(record => {
                 const driverLabel = escapeHtml(record.driver_name || record.driver_id || '-');
                 const vehicleType = escapeHtml(record.vehicle_type || '-');
                 const routeLabel = `${escapeHtml(record.start_node || '-')} → ${escapeHtml(record.target_node || '-')}`;
@@ -2875,6 +2889,11 @@
                     </tr>
                 `;
             }).join('');
+            
+            lastTravelDbHtml = newTbodyHtml;
+            if (tbody.innerHTML !== newTbodyHtml) {
+                tbody.innerHTML = newTbodyHtml;
+            }
         }
 
         // 获取路网信息
@@ -3150,39 +3169,106 @@
         }
         
         // 更新司机列表显示
+        // 更新司机列表显示 - 性能优化版(DOM Diffing)
         function updateDriverList() {
             const listEl = document.getElementById('driver-list');
             if (!listEl) return;
             
             const driverArray = Object.values(drivers);
             if (driverArray.length === 0) {
-                listEl.innerHTML = '<div class="loading">暂无已注册司机</div>';
+                if (!listEl.querySelector('.loading')) {
+                    listEl.innerHTML = '<div class="loading">暂无已注册司机</div>';
+                }
                 return;
             }
             
-            listEl.innerHTML = '';
-            driverArray.forEach(driver => {
-                const driverId = driver.id || driver.driver_id || '未知';
-                const item = document.createElement('div');
-                item.className = 'node-item';
-                item.style.cursor = 'pointer';
-                item.style.padding = '10px';
-                item.style.marginBottom = '5px';
-                item.style.border = '1px solid #ddd';
-                item.style.borderRadius = '5px';
-                item.innerHTML = `
-                    <div class="node-item-info">
-                        <strong>${driver.name || driverId}</strong> (ID: ${driverId})<br>
-                        ${driver.license_plate ? `<span style="color: #3498db;">车牌: ${driver.license_plate}</span><br>` : ''}
-                        ${driver.phone || driver.contact ? `<span style="color: #27ae60;">电话: ${driver.phone || driver.contact}</span><br>` : ''}
-                        <span style="color: #7f8c8d; font-size: 12px;">车辆类型: ${driver.vehicle_type || '未设置'}</span>
-                    </div>
-                `;
-                item.addEventListener('click', () => {
-                    showDriverDetail(driver);
-                });
-                listEl.appendChild(item);
+            // 清理旧的 loading 提示
+            const loadingEl = listEl.querySelector('.loading');
+            if (loadingEl) listEl.innerHTML = '';
+
+            const currentIds = new Set(driverArray.map(d => String(d.id || d.driver_id || '未知')));
+
+            Array.from(listEl.children).forEach(item => {
+                const id = item.dataset.id;
+                if (id && !currentIds.has(id)) {
+                    item.remove();
+                }
             });
+            
+            driverArray.forEach((driver, index) => {
+                const driverId = String(driver.id || driver.driver_id || '未知');
+                let item = listEl.querySelector(`.node-item[data-id="${driverId}"]`);
+
+                const innerHtmlContent = `
+                    <strong>${escapeHtml(driver.name || driverId)}</strong>
+                    <span style="color:#888;font-size:12px;"> (ID: ${escapeHtml(driverId)})</span><br>
+                    ${driver.license_plate ? `<span style="color:#3498db;">车牌: ${escapeHtml(driver.license_plate)}</span><br>` : ''}
+                    ${driver.phone || driver.contact ? `<span style="color:#27ae60;">电话: ${escapeHtml(driver.phone || driver.contact)}</span><br>` : ''}
+                    <span style="color:#7f8c8d;font-size:12px;">车辆类型: ${escapeHtml(driver.vehicle_type || '未设置')}</span>
+                `;
+
+                if (!item) {
+                    item = document.createElement('div');
+                    item.className = 'node-item';
+                    item.dataset.id = driverId;
+                    item.style.cssText = 'padding:10px;margin-bottom:5px;border:1px solid #ddd;border-radius:5px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;';
+
+                    const infoDiv = document.createElement('div');
+                    infoDiv.className = 'driver-info-content';
+                    infoDiv.style.flex = '1';
+                    infoDiv.style.cursor = 'pointer';
+                    infoDiv.innerHTML = innerHtmlContent;
+                    infoDiv.addEventListener('click', () => showDriverDetail(driver));
+
+                    const delBtn = document.createElement('button');
+                    delBtn.textContent = '删除';
+                    delBtn.title = `删除司机 ${driver.name || driverId}`;
+                    delBtn.style.cssText = 'background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;flex-shrink:0;white-space:nowrap;line-height:1.6;align-self:center;';
+                    delBtn.addEventListener('mouseenter', () => { delBtn.style.background = '#c0392b'; });
+                    delBtn.addEventListener('mouseleave', () => { delBtn.style.background = '#e74c3c'; });
+                    delBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteDriver(driverId, driver.name || driverId);
+                    });
+
+                    item.appendChild(infoDiv);
+                    item.appendChild(delBtn);
+
+                    if (index >= listEl.children.length) {
+                        listEl.appendChild(item);
+                    } else {
+                        listEl.insertBefore(item, listEl.children[index]);
+                    }
+                } else {
+                    // 已存在，比对更新内容
+                    const infoDiv = item.querySelector('.driver-info-content');
+                    if (infoDiv && infoDiv.innerHTML !== innerHtmlContent) {
+                        infoDiv.innerHTML = innerHtmlContent;
+                    }
+                    if (listEl.children[index] !== item) {
+                        listEl.insertBefore(item, listEl.children[index]);
+                    }
+                }
+            });
+        }
+
+        // 删除司机
+        async function deleteDriver(driverId, driverName) {
+            const confirmed = confirm(`确认删除司机「${driverName}」(${driverId}) ？\n\n该司机将从系统中注销，地图上的关联车辆也将同步移除。`);
+            if (!confirmed) return;
+
+            const result = await apiCall(`/drivers/${encodeURIComponent(driverId)}`, { method: 'DELETE' });
+            if (result.success) {
+                showSuccess(result.message || `司机 ${driverId} 已删除`);
+                if (activeDriverId === driverId) {
+                    activeDriverId = null;
+                }
+                await fetchDrivers();
+                await fetchVehicles();
+                safeRenderMap();
+            } else {
+                showError(result.message || `删除司机 ${driverId} 失败`);
+            }
         }
         
         // 显示司机详细信息
@@ -5574,13 +5660,13 @@
                 `;
                 
                 gpsBtn.addEventListener('mouseenter', () => {
-                    gpsBtn.style.transform = 'scale(1.2)';
-                    gpsBtn.style.boxShadow = '0 3px 6px rgba(0,0,0,0.4)';
+                    gpsBtn.style.filter = 'brightness(1.2)';
+                    gpsBtn.style.boxShadow = '0 3px 6px rgba(0,0,0,0.6)';
                 });
                 
                 gpsBtn.addEventListener('mouseleave', () => {
-                    gpsBtn.style.transform = 'scale(1)';
-                    gpsBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+                    gpsBtn.style.filter = 'none';
+                    gpsBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
                 });
                 
                 gpsBtn.addEventListener('click', async (e) => {
@@ -5804,15 +5890,21 @@
             // 注意：不再在渲染时自动居中，避免干扰用户拖拽操作
         }
 
+        let pendingRenderMap = false;
         function safeRenderMap() {
-            try {
-                renderMap();
-                // 应用地图旋转和恢复缩放和平移状态
-                // 直接调用 applyMapRotation 来应用旋转（它会处理缩放和平移的组合）
-                applyMapRotation(mapRotation);
-            } catch (err) {
-                logError('renderMap 执行出错:', err);
-            }
+            if (pendingRenderMap) return;
+            pendingRenderMap = true;
+            
+            requestAnimationFrame(() => {
+                pendingRenderMap = false;
+                try {
+                    renderMap();
+                    // 应用地图旋转和恢复缩放和平移状态
+                    applyMapRotation(mapRotation);
+                } catch (err) {
+                    logError('renderMap 执行出错:', err);
+                }
+            });
         }
         
         // 使用防抖优化的渲染函数（用于频繁调用场景）
@@ -6643,10 +6735,10 @@
             }
         }
 
-        // 更新车辆列表
+        // 更新车辆列表 - 性能优化版(DOM Diffing)
         function updateVehicleList(sortByEfficiency = false) {
             const vehicleList = document.getElementById('vehicle-list');
-            vehicleList.innerHTML = '';
+            if (!vehicleList) return;
 
             let displayVehicles = [...vehicles];
             if (sortByEfficiency) {
@@ -6662,31 +6754,71 @@
                 return;
             }
 
-            displayVehicles.forEach(vehicle => {
-                const vehicleItem = document.createElement('div');
-                vehicleItem.className = 'vehicle-item';
+            // 清理旧的 loading 提示
+            const loadingEl = vehicleList.querySelector('.loading');
+            if (loadingEl) vehicleList.innerHTML = '';
 
-                const leftDiv = document.createElement('div');
+            // 用于快速查找当前批次的车辆
+            const currentIds = new Set(displayVehicles.map(v => String(v.id)));
+
+            // 移除已经不存在的车辆DOM
+            Array.from(vehicleList.children).forEach(item => {
+                const id = item.dataset.id;
+                if (id && !currentIds.has(id)) {
+                    item.remove();
+                }
+            });
+
+            // 增量更新或新建
+            displayVehicles.forEach((vehicle, index) => {
+                const vid = String(vehicle.id);
+                let vehicleItem = vehicleList.querySelector(`.vehicle-item[data-id="${vid}"]`);
+
                 let driverInfo = '';
                 if (vehicle.driver_id) {
                     driverInfo = `<div class="vehicle-info" style="color: #27ae60;">👤 司机: ${vehicle.driver_name || vehicle.driver_id}</div>`;
                 }
                 
-                leftDiv.innerHTML = `<strong>${vehicle.id}</strong> - ${vehicle.type}
+                const eff = vehicle.efficiency_score !== undefined && vehicle.efficiency_score !== null
+                    ? `${vehicle.efficiency_score.toFixed(1)}`
+                    : 'N/A';
+
+                const leftHtml = `<strong>${vehicle.id}</strong> - ${vehicle.type}
                     <div class="vehicle-info">载重: ${vehicle.weight}吨 | 宽度: ${vehicle.width}米</div>
                     ${driverInfo}
                     <div class="vehicle-info">状态: ${vehicle.status || 'moving'}</div>`;
 
-                const rightDiv = document.createElement('div');
-                const eff = vehicle.efficiency_score !== undefined && vehicle.efficiency_score !== null
-                    ? `${vehicle.efficiency_score.toFixed(1)}`
-                    : 'N/A';
-                rightDiv.innerHTML = `起点: ${getNodeName(vehicle.start_node)}<br>目标: ${getNodeName(vehicle.target_node)}<br><small>效率: ${eff}</small>`;
+                const rightHtml = `起点: ${getNodeName(vehicle.start_node)}<br>目标: ${getNodeName(vehicle.target_node)}<br><small>效率: ${eff}</small>`;
 
-                vehicleItem.appendChild(leftDiv);
-                vehicleItem.appendChild(rightDiv);
+                if (!vehicleItem) {
+                    vehicleItem = document.createElement('div');
+                    vehicleItem.className = 'vehicle-item';
+                    vehicleItem.dataset.id = vid;
 
-                vehicleList.appendChild(vehicleItem);
+                    const leftDiv = document.createElement('div');
+                    leftDiv.className = 'v-left';
+                    leftDiv.innerHTML = leftHtml;
+
+                    const rightDiv = document.createElement('div');
+                    rightDiv.className = 'v-right';
+                    rightDiv.innerHTML = rightHtml;
+
+                    vehicleItem.appendChild(leftDiv);
+                    vehicleItem.appendChild(rightDiv);
+                } else {
+                    // 更新已存在节点
+                    const leftDiv = vehicleItem.querySelector('.v-left') || vehicleItem.children[0];
+                    const rightDiv = vehicleItem.querySelector('.v-right') || vehicleItem.children[1];
+                    
+                    // 仅当内容改变时才触发 innerHTML
+                    if (leftDiv.innerHTML !== leftHtml) leftDiv.innerHTML = leftHtml;
+                    if (rightDiv.innerHTML !== rightHtml) rightDiv.innerHTML = rightHtml;
+                }
+
+                // 修正排序位置
+                if (vehicleList.children[index] !== vehicleItem) {
+                    vehicleList.insertBefore(vehicleItem, vehicleList.children[index]);
+                }
             });
         }
 
@@ -6696,73 +6828,117 @@
             return node ? node.name : nodeId;
         }
 
-        // 更新节点列表
+        // 更新节点列表 - 性能优化版(DOM Diffing)
         function updateNodeList() {
             const nodeList = document.getElementById('node-list');
-            nodeList.innerHTML = '';
+            if (!nodeList) return;
 
             if (nodes.length === 0) {
-                nodeList.innerHTML = '<div class="loading">暂无节点，请添加节点</div>';
+                if (!nodeList.querySelector('.loading')) {
+                    nodeList.innerHTML = '<div class="loading">暂无节点，请添加节点</div>';
+                }
                 return;
             }
 
-            nodes.forEach(node => {
-                const nodeItem = document.createElement('div');
-                nodeItem.className = 'node-item';
-                nodeItem.innerHTML = `
-                    <div style="display:flex; align-items:center;">
-                        <div class="node-item-color" style="background: ${nodeTypes[node.type].color}"></div>
-                        <div class="node-item-info" style="flex:1;">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <input type="text" class="node-name-input" data-id="${node.id}" 
-                                       value="${escapeHtml(node.name)}" 
-                                       style="flex:1; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-weight:bold;"
-                                       placeholder="节点名称">
-                                <span style="color:#999; font-size:12px;">(${node.id})</span>
+            // 清理旧的 loading 提示
+            const loadingEl = nodeList.querySelector('.loading');
+            if (loadingEl) nodeList.innerHTML = '';
+
+            // 快速查找当前批次的节点
+            const currentIds = new Set(nodes.map(n => String(n.id)));
+
+            // 移除已删除的节点 DOM
+            Array.from(nodeList.children).forEach(item => {
+                const id = item.dataset.id;
+                if (id && !currentIds.has(id)) {
+                    item.remove();
+                }
+            });
+
+            // 增量更新或新建
+            nodes.forEach((node, index) => {
+                const nid = String(node.id);
+                let nodeItem = nodeList.querySelector(`.node-item[data-id="${nid}"]`);
+
+                const nodeTypeObj = nodeTypes[node.type] || {name: node.type, color: '#999'};
+                
+                // 为了防止覆盖用户正在输入的名称，此处把不需要强行覆盖的动态输入框独立出去
+                const infoHtml = `${nodeTypeObj.name} - (${Math.round(node.x)}, ${Math.round(node.y)})`;
+
+                if (!nodeItem) {
+                    nodeItem = document.createElement('div');
+                    nodeItem.className = 'node-item';
+                    nodeItem.dataset.id = nid;
+                    nodeItem.innerHTML = `
+                        <div style="display:flex; align-items:center;">
+                            <div class="node-item-color" style="background: ${nodeTypeObj.color}"></div>
+                            <div class="node-item-info" style="flex:1;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <input type="text" class="node-name-input" data-id="${nid}" 
+                                           value="${escapeHtml(node.name)}" 
+                                           style="flex:1; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-weight:bold;"
+                                           placeholder="节点名称">
+                                    <span style="color:#999; font-size:12px;">(${nid})</span>
+                                </div>
+                                <span class="vehicle-info node-info-text">${infoHtml}</span>
                             </div>
-                            <span class="vehicle-info">${nodeTypes[node.type].name} - (${Math.round(node.x)}, ${Math.round(node.y)})</span>
                         </div>
-                    </div>
-                    <div class="node-item-actions" style="display:flex; gap:5px;">
-                        <button class="save-node-name" data-id="${node.id}" style="background:#27ae60; padding:4px 8px; font-size:12px;">保存</button>
-                        <button class="delete-node" data-id="${node.id}" style="background:#e74c3c; padding:4px 8px; font-size:12px;">删除</button>
-                    </div>
-                `;
-                nodeList.appendChild(nodeItem);
-            });
+                        <div class="node-item-actions" style="display:flex; gap:5px;">
+                            <button class="save-node-name" data-id="${nid}" style="background:#27ae60; padding:4px 8px; font-size:12px;">保存</button>
+                            <button class="delete-node" data-id="${nid}" style="background:#e74c3c; padding:4px 8px; font-size:12px;">删除</button>
+                        </div>
+                    `;
 
-            // 节点名称编辑事件
-            document.querySelectorAll('.node-name-input').forEach(input => {
-                input.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
-                        const nodeId = this.getAttribute('data-id');
-                        saveNodeName(nodeId, this.value);
-                    }
-                });
-                input.addEventListener('blur', function() {
-                    const nodeId = this.getAttribute('data-id');
-                    const node = nodes.find(n => n.id === nodeId);
-                    if (node && this.value !== node.name) {
-                        saveNodeName(nodeId, this.value);
-                    }
-                });
-            });
+                    // 绑定事件
+                    const input = nodeItem.querySelector('.node-name-input');
+                    input.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter') saveNodeName(nid, this.value);
+                    });
+                    input.addEventListener('blur', function() {
+                        const n = nodes.find(nn => String(nn.id) === nid);
+                        if (n && this.value !== n.name) saveNodeName(nid, this.value);
+                    });
 
-            document.querySelectorAll('.save-node-name').forEach(button => {
-                button.addEventListener('click', function () {
-                    const nodeId = this.getAttribute('data-id');
-                    const input = document.querySelector(`.node-name-input[data-id="${nodeId}"]`);
-                    if (input) {
-                        saveNodeName(nodeId, input.value);
-                    }
-                });
-            });
+                    const saveBtn = nodeItem.querySelector('.save-node-name');
+                    saveBtn.addEventListener('click', function() {
+                        const inputEl = nodeItem.querySelector('.node-name-input');
+                        if (inputEl) saveNodeName(nid, inputEl.value);
+                    });
 
-            document.querySelectorAll('.delete-node').forEach(button => {
-                button.addEventListener('click', function () {
-                    const nodeId = this.getAttribute('data-id');
-                    deleteNode(nodeId);
-                });
+                    const delBtn = nodeItem.querySelector('.delete-node');
+                    delBtn.addEventListener('click', function() {
+                        if (confirm(`确定要删除此节点吗？该操作同时会删除连接该节点的所有道路。`)) {
+                            deleteNode(nid);
+                        }
+                    });
+
+                    // 插入到列表的正确位置
+                    if (index >= nodeList.children.length) {
+                        nodeList.appendChild(nodeItem);
+                    } else {
+                        nodeList.insertBefore(nodeItem, nodeList.children[index]);
+                    }
+                } else {
+                    // 已存在，仅更新受系统改动的只读信息
+                    const infoTextNode = nodeItem.querySelector('.node-info-text');
+                    if (infoTextNode && infoTextNode.innerHTML !== infoHtml) {
+                        infoTextNode.innerHTML = infoHtml;
+                    }
+                    const colorDiv = nodeItem.querySelector('.node-item-color');
+                    if (colorDiv && colorDiv.style.background !== nodeTypeObj.color) {
+                        colorDiv.style.background = nodeTypeObj.color;
+                    }
+                    // 特别地：如果在程序内部改变了节点的名称，但目前输入框未处于焦点，则静默更新它
+                    const inputEl = nodeItem.querySelector('.node-name-input');
+                    if (inputEl && document.activeElement !== inputEl && inputEl.value !== node.name) {
+                        inputEl.value = node.name;
+                    }
+
+                    // 修正排序位置
+                    if (nodeList.children[index] !== nodeItem) {
+                        nodeList.insertBefore(nodeItem, nodeList.children[index]);
+                    }
+                }
             });
         }
 
@@ -6926,7 +7102,10 @@
             }
         }
 
-        // 更新路网信息
+        // 缓存路网结构哈希，避免不必要的重新渲染引发下拉框闪缩失去焦点
+        let lastRoadTopologyHash = '';
+
+        // 更新路网信息 - 性能优化版(DOM Diffing)
         function updateRoadInfo() {
             const roadStats = document.getElementById('road-stats');
             const roadList = document.getElementById('road-list');
@@ -6936,53 +7115,50 @@
             const directionEdgeSelect = document.getElementById('direction-edge');
 
             if (edges.length === 0) {
-                roadStats.innerHTML = '<div class="loading">正在加载路网数据...</div>';
-                roadList.innerHTML = '<div class="loading">正在加载道路数据...</div>';
+                if (roadStats && !roadStats.querySelector('.loading')) {
+                    roadStats.innerHTML = '<div class="loading">正在加载路网数据...</div>';
+                }
+                if (roadList && !roadList.querySelector('.loading')) {
+                    roadList.innerHTML = '<div class="loading">正在加载道路数据...</div>';
+                }
                 return;
             }
 
-            // 填充节点选择框（用于节点拥堵控制）
-            if (congestionNodeSelect) {
-                congestionNodeSelect.innerHTML = '<option value="">请选择节点</option>';
-                nodes.forEach(node => {
-                    const option = document.createElement('option');
-                    option.value = node.id;
-                    option.textContent = `${node.name} (${node.id})`;
-                    congestionNodeSelect.appendChild(option);
-                });
-            }
+            // 计算拓扑结构哈希，如果不变则跳过下拉菜单重绘
+            const currentTopologyHash = edges.map(e => e.id).join(',') + '|' + nodes.map(n => n.id).join(',');
+            const topologyChanged = currentTopologyHash !== lastRoadTopologyHash;
+            lastRoadTopologyHash = currentTopologyHash;
 
-            // 填充道路选择框（用于道路状态控制）
-            if (statusEdgeSelect) {
-                statusEdgeSelect.innerHTML = '<option value="">请选择道路</option>';
-                edges.forEach(edge => {
-                    const option = document.createElement('option');
-                    option.value = edge.id;
-                    option.textContent = edge.id;
-                    statusEdgeSelect.appendChild(option);
-                });
-            }
+            if (topologyChanged) {
+                // 填充节点选择框（用于节点拥堵控制）
+                if (congestionNodeSelect) {
+                    const currentVal = congestionNodeSelect.value;
+                    congestionNodeSelect.innerHTML = '<option value="">请选择节点</option>';
+                    nodes.forEach(node => {
+                        const option = document.createElement('option');
+                        option.value = node.id;
+                        option.textContent = `${node.name} (${node.id})`;
+                        congestionNodeSelect.appendChild(option);
+                    });
+                    if (currentVal) congestionNodeSelect.value = currentVal;
+                }
 
-            // 填充旧版拥堵控制选择框
-            if (congestionEdgeSelect) {
-                congestionEdgeSelect.innerHTML = '<option value="">请选择道路</option>';
-                edges.forEach(edge => {
-                    const option = document.createElement('option');
-                    option.value = edge.id;
-                    option.textContent = edge.id;
-                    congestionEdgeSelect.appendChild(option);
-                });
-            }
+                const populateEdgeSelect = (selectEl) => {
+                    if (!selectEl) return;
+                    const currentVal = selectEl.value;
+                    selectEl.innerHTML = '<option value="">请选择道路</option>';
+                    edges.forEach(edge => {
+                        const option = document.createElement('option');
+                        option.value = edge.id;
+                        option.textContent = edge.id;
+                        selectEl.appendChild(option);
+                    });
+                    if (currentVal) selectEl.value = currentVal;
+                };
 
-            // 填充方向控制选择框
-            if (directionEdgeSelect) {
-                directionEdgeSelect.innerHTML = '<option value="">请选择道路</option>';
-                edges.forEach(edge => {
-                    const option = document.createElement('option');
-                    option.value = edge.id;
-                    option.textContent = edge.id;
-                    directionEdgeSelect.appendChild(option);
-                });
+                populateEdgeSelect(statusEdgeSelect);
+                populateEdgeSelect(congestionEdgeSelect);
+                populateEdgeSelect(directionEdgeSelect);
             }
 
             const totalEdges = edges.length;
@@ -6994,16 +7170,32 @@
                 return status === 'construction';
             }).length;
 
-            roadStats.innerHTML = `
+            const statsHtml = `
                 <div class="status-card"><strong>总道路数:</strong> ${totalEdges}</div>
                 <div class="status-card ${congestedEdges > 0 ? 'congested' : ''}"><strong>拥堵道路:</strong> ${congestedEdges}</div>
                 <div class="status-card ${constructionEdges > 0 ? 'construction' : ''}"><strong>占道施工:</strong> ${constructionEdges}</div>
                 <div class="status-card ${closedEdges > 0 ? 'closed' : ''}"><strong>封闭道路:</strong> ${closedEdges}</div>
                 <div class="status-card"><strong>单向道路:</strong> ${oneWayEdges}</div>
             `;
+            if (roadStats && roadStats.innerHTML !== statsHtml) {
+                roadStats.innerHTML = statsHtml;
+            }
 
-            roadList.innerHTML = '';
-            edges.forEach(edge => {
+            if (!roadList) return;
+
+            const loadingEl = roadList.querySelector('.loading');
+            if (loadingEl) roadList.innerHTML = '';
+
+            const currentIds = new Set(edges.map(e => String(e.id)));
+            Array.from(roadList.children).forEach(item => {
+                const id = item.dataset.id;
+                if (id && !currentIds.has(id)) {
+                    item.remove();
+                }
+            });
+
+            edges.forEach((edge, index) => {
+                const eid = String(edge.id);
                 const startNode = nodes.find(n => n.id === edge.start_node);
                 const endNode = nodes.find(n => n.id === edge.end_node);
                 const congestion = edge.congestion_coeff || 1.0;
@@ -7019,26 +7211,73 @@
                     'closed': '封闭'
                 };
                 const statusName = statusNames[edgeStatus] || '正常';
-
-                const roadItem = document.createElement('div');
-                roadItem.className = `status-card ${congestion > 1.5 ? 'congested' : ''} ${!available ? 'closed' : ''} ${edgeStatus === 'construction' ? 'construction' : ''}`;
+                
+                const className = `status-card road-item ${congestion > 1.5 ? 'congested' : ''} ${!available ? 'closed' : ''} ${edgeStatus === 'construction' ? 'construction' : ''}`;
                 const edgeName = edge.name || edge.id;
-                roadItem.innerHTML = `
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <input type="text" class="edge-name-input" data-id="${edge.id}" 
-                               value="${escapeHtml(edgeName)}" 
-                               style="flex:1; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-weight:bold;"
-                               placeholder="道路名称">
-                        <span style="color:#999; font-size:12px;">(${edge.id})</span>
-                        <button class="save-edge-name" data-id="${edge.id}" style="background:#27ae60; padding:4px 8px; font-size:12px;">保存</button>
-                    </div>
-                    <div style="font-size:12px; color:#666;">
-                        ${startNode ? startNode.name : edge.start_node} → ${endNode ? endNode.name : edge.end_node}<br>
-                        长度: ${edge.length}m | 最大承重: ${edge.max_weight}t | 最大宽度: ${edge.max_width}m<br>
-                        拥堵系数: ${congestion.toFixed(2)} | 方向: ${directionName} | 状态: ${statusName}
-                    </div>
+                
+                const infoHtml = `
+                    ${startNode ? startNode.name : edge.start_node} → ${endNode ? endNode.name : edge.end_node}<br>
+                    长度: ${edge.length}m | 最大承重: ${edge.max_weight}t | 最大宽度: ${edge.max_width}m<br>
+                    拥堵系数: ${congestion.toFixed(2)} | 方向: ${directionName} | 状态: ${statusName}
                 `;
-                roadList.appendChild(roadItem);
+
+                let roadItem = roadList.querySelector(`.road-item[data-id="${eid}"]`);
+                if (!roadItem) {
+                    roadItem = document.createElement('div');
+                    roadItem.className = className;
+                    roadItem.dataset.id = eid;
+                    roadItem.innerHTML = `
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                            <input type="text" class="edge-name-input" data-id="${eid}" 
+                                   value="${escapeHtml(edgeName)}" 
+                                   style="flex:1; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-weight:bold;"
+                                   placeholder="道路名称">
+                            <span style="color:#999; font-size:12px;">(${eid})</span>
+                            <button class="save-edge-name" data-id="${eid}" style="background:#27ae60; padding:4px 8px; font-size:12px;">保存</button>
+                        </div>
+                        <div class="edge-info-text" style="font-size:12px; color:#666;">
+                            ${infoHtml}
+                        </div>
+                    `;
+                    
+                    const saveBtn = roadItem.querySelector('.save-edge-name');
+                    const inputEl = roadItem.querySelector('.edge-name-input');
+                    
+                    const doSave = () => {
+                        if (inputEl) saveEdgeName(eid, inputEl.value);
+                    };
+                    
+                    if (saveBtn) saveBtn.addEventListener('click', doSave);
+                    if (inputEl) {
+                        inputEl.addEventListener('keypress', (e) => { if (e.key === 'Enter') doSave(); });
+                        inputEl.addEventListener('blur', () => {
+                            const eObj = edges.find(ee => String(ee.id) === eid);
+                            if (eObj && inputEl.value !== (eObj.name || eObj.id)) doSave();
+                        });
+                    }
+
+                    if (index >= roadList.children.length) {
+                        roadList.appendChild(roadItem);
+                    } else {
+                        roadList.insertBefore(roadItem, roadList.children[index]);
+                    }
+                } else {
+                    if (roadItem.className !== className) {
+                        roadItem.className = className;
+                    }
+                    const infoTextNode = roadItem.querySelector('.edge-info-text');
+                    if (infoTextNode && infoTextNode.innerHTML !== infoHtml) {
+                        infoTextNode.innerHTML = infoHtml;
+                    }
+                    const inputEl = roadItem.querySelector('.edge-name-input');
+                    if (inputEl && document.activeElement !== inputEl && inputEl.value !== edgeName) {
+                        inputEl.value = edgeName;
+                    }
+
+                    if (roadList.children[index] !== roadItem) {
+                        roadList.insertBefore(roadItem, roadList.children[index]);
+                    }
+                }
             });
         }
 
@@ -7659,13 +7898,16 @@
             });
         }
 
-        // 更新监控数据区与调度结果展示（显示效率分）
+        // 更新监控数据区与调度结果展示（显示效率分） - 性能优化版
         function updateMonitorData() {
             const monitorDataEl = document.getElementById('monitor-data');
             const dispatchResultsEl = document.getElementById('dispatch-results');
 
             if (!monitorData.edge_congestion) {
-                monitorDataEl.innerHTML = '<div class="loading">正在加载监控数据...</div>';
+                // 仅初始加载时覆盖
+                if (!monitorDataEl.querySelector('.loading') && !monitorDataEl.children.length) {
+                    monitorDataEl.innerHTML = '<div class="loading">正在加载监控数据...</div>';
+                }
                 return;
             }
 
@@ -7677,18 +7919,37 @@
 
             let maxQueue = Math.max(...Object.values(monitorData.entrance_queue || {}), 0);
 
-            monitorDataEl.innerHTML = `
+            const newMonitorHtml = `
                 <div class="status-card"><strong>拥堵道路:</strong> ${congestedRoads.length > 0 ? congestedRoads.join(', ') : '无'}</div>
                 <div class="status-card"><strong>封闭道路:</strong> ${closedRoads.length > 0 ? closedRoads.join(', ') : '无'}</div>
                 <div class="status-card"><strong>进场口排队峰值:</strong> ${maxQueue}辆</div>
             `;
+            if (monitorDataEl.innerHTML !== newMonitorHtml) {
+                monitorDataEl.innerHTML = newMonitorHtml;
+            }
 
-            // 调度结果：显示每车路径文本与效率分
-            dispatchResultsEl.innerHTML = '';
-            vehicles.forEach(vehicle => {
-                if (vehicle.assigned_entrance || vehicle.current_path) {
-                    const resultItem = document.createElement('div');
-                    resultItem.className = 'status-card';
+            // 调度结果：DOM Diff 增量更新
+            const validVehicles = vehicles.filter(v => v.assigned_entrance || v.current_path);
+
+            if (validVehicles.length === 0) {
+                if (!dispatchResultsEl.querySelector('.loading')) {
+                    dispatchResultsEl.innerHTML = '<div class="loading">暂无调度结果</div>';
+                }
+            } else {
+                // 清理 Loading 或不相关的结构
+                if (dispatchResultsEl.querySelector('.loading')) {
+                    dispatchResultsEl.innerHTML = '';
+                }
+
+                const currentIds = new Set(validVehicles.map(v => String(v.id)));
+                Array.from(dispatchResultsEl.children).forEach(item => {
+                    const id = item.dataset.id;
+                    if (id && !currentIds.has(id)) item.remove();
+                });
+
+                validVehicles.forEach((vehicle, index) => {
+                    const vid = String(vehicle.id);
+                    let resultItem = dispatchResultsEl.querySelector(`.status-card[data-id="${vid}"]`);
 
                     let pathText = '';
                     if (vehicle.current_path && vehicle.current_path.length > 0) {
@@ -7712,19 +7973,29 @@
                         ? `${parseFloat(vehicle.estimated_time).toFixed(1)}分钟`
                         : '计算中...';
 
-                    resultItem.innerHTML = `
+                    const newContent = `
                         <strong>${vehicle.id}</strong> - ${vehicle.type}<br>
                         起点: ${getNodeName(vehicle.start_node)} | 目标: ${getNodeName(vehicle.target_node)}<br>
                         路径: ${pathText || '未规划'}<br>
                         预计通行时间: ${estimatedTime}<br>
                         效率评分: ${eff}
                     `;
-                    dispatchResultsEl.appendChild(resultItem);
-                }
-            });
 
-            if (dispatchResultsEl.children.length === 0) {
-                dispatchResultsEl.innerHTML = '<div class="loading">暂无调度结果</div>';
+                    if (!resultItem) {
+                        resultItem = document.createElement('div');
+                        resultItem.className = 'status-card';
+                        resultItem.dataset.id = vid;
+                        resultItem.innerHTML = newContent;
+                    } else {
+                        if (resultItem.innerHTML !== newContent) {
+                            resultItem.innerHTML = newContent;
+                        }
+                    }
+
+                    if (dispatchResultsEl.children[index] !== resultItem) {
+                        dispatchResultsEl.insertBefore(resultItem, dispatchResultsEl.children[index]);
+                    }
+                });
             }
 
             const arrivalSummaryEl = document.getElementById('arrival-summary');

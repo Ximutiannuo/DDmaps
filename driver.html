@@ -1481,20 +1481,20 @@
                     </div>
                 </div>
 
-                <!-- 运行模式选择 -->
-                <div class="section">
+                <!-- 运行模式选择 (已默认切换到GPS模式并隐藏) -->
+                <div class="section" style="display: none;">
                     <div class="section-title" style="font-weight: bold; margin-bottom: 15px;"
                         data-i18n="vehicle_mode_title">运行模式</div>
                     <div class="form-group">
                         <div style="display: flex; gap: 10px; align-items: center;">
                             <label
                                 style="display: flex; align-items: center; cursor: pointer; flex: 1; padding: 12px; background: #f8f9fa; border: 2px solid #e0e0e0; border-radius: 8px; transition: all 0.3s;">
-                                <input type="radio" name="vehicle-mode" value="auto" checked style="margin-right: 8px;">
+                                <input type="radio" name="vehicle-mode" value="auto" style="margin-right: 8px;">
                                 <span style="font-weight: 500;" data-i18n="vehicle_mode_auto">🚗 自动模式</span>
                             </label>
                             <label
                                 style="display: flex; align-items: center; cursor: pointer; flex: 1; padding: 12px; background: #f8f9fa; border: 2px solid #e0e0e0; border-radius: 8px; transition: all 0.3s;">
-                                <input type="radio" name="vehicle-mode" value="gps" style="margin-right: 8px;">
+                                <input type="radio" name="vehicle-mode" value="gps" checked style="margin-right: 8px;">
                                 <span style="font-weight: 500;" data-i18n="vehicle_mode_gps">📍 GPS模式</span>
                             </label>
                         </div>
@@ -2303,7 +2303,7 @@
             let myVehicle = null; // 当前司机提交的实际车辆
             let locationWatchId = null; // 位置跟踪的watch ID
             let isLocationTracking = false; // 是否正在跟踪位置
-            let vehicleMode = 'auto'; // 车辆运行模式：'auto' 或 'gps'
+            let vehicleMode = 'gps'; // 车辆运行模式：强制默认为 'gps'
             let cancelledVehicleIds = new Set(); // 被中断导航的车辆ID列表（不再自动恢复）
             let gpsVehicleUpdateInterval = null; // GPS模式下更新车辆位置的定时器
 
@@ -3407,6 +3407,22 @@
                 });
             }
 
+            // 计算两个经纬度点之间的球面距离 (单位: 米)
+            function calculateDistance(lat1, lon1, lat2, lon2) {
+                const R = 6371e3; // 地球半径
+                const φ1 = lat1 * Math.PI / 180;
+                const φ2 = lat2 * Math.PI / 180;
+                const Δφ = (lat2 - lat1) * Math.PI / 180;
+                const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+                const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+                return R * c;
+            }
+
             // 更新起点节点为GPS位置
             function updateStartNodeForGps() {
                 const startSelect = document.getElementById('start-node');
@@ -3471,6 +3487,17 @@
                         const latitude = position.coords.latitude;
                         const longitude = position.coords.longitude;
                         const accuracy = position.coords.accuracy;
+
+                        // [精度增强]：拦截低质量信号 (误差大于 60 米的基站定位)
+                        if (accuracy > 60) {
+                            console.warn(`[GPS] 信号质量极差 (误差 ${Math.round(accuracy)}m)，已忽略。请确保 GPS 已开启或在室外使用。`);
+                            showAlert('warning', `定位精度过低 (${Math.round(accuracy)}米), 请开启手机 GPS 硬件定位并移步开阔区域。`);
+                            if (getLocationBtn) {
+                                getLocationBtn.disabled = false;
+                                getLocationBtn.textContent = '📍 定位';
+                            }
+                            return;
+                        }
 
                         try {
                             // 更新司机位置
@@ -3917,7 +3944,7 @@
                 if (!driverId) return;
 
                 try {
-                    const result = await apiCall(`/drivers/${driverId}`);
+                    const result = await apiCall(`/drivers/${driverId}`, { silent: true });
                     if (result.success && result.driver) {
                         const driver = result.driver;
                         // 填充表单
@@ -3934,7 +3961,14 @@
                         displayDriverInfo(driver);
                     }
                 } catch (error) {
-                    logWarn('加载司机信息失败:', error);
+                    // 如果司机未注册（404错误），自动注册
+                    if (error.message && error.message.includes('未注册')) {
+                        console.log('司机未注册，自动注册中...');
+                        // 自动调用注册（使用默认信息）
+                        await registerDriver();
+                    } else {
+                        logWarn('加载司机信息失败:', error);
+                    }
                 }
             }
 
@@ -3972,6 +4006,10 @@
                     // 显示司机信息
                     displayDriverInfo(result.driver);
                     showAlert('success', result.message || '注册成功');
+
+                    // [优化]：注册成功后立即自动执行一次GPS定位，无需司机再次点击
+                    console.log('🚀 [系统直连] 注册成功，正在自动启动GPS定位...');
+                    getCurrentLocationAndFindNodes();
 
                     // 折叠司机信息框并显示摘要
                     const driverSection = document.getElementById('driver-section');
@@ -4854,19 +4892,28 @@
                         const longitude = position.coords.longitude;
                         const accuracy = position.coords.accuracy;
 
-                        // 计算位置变化距离（使用简单的欧几里得距离）
+                        // [精度增强]：拦截动态追踪中的低质量信号 (如果是基站或WiFi模拟的100米以上误差信号，直接丢弃)
+                        if (accuracy > 60) {
+                            console.warn(`[GPS Tracking] 忽视低精度信号: ${accuracy.toFixed(1)}m`);
+                            return;
+                        }
+
+                        // 计算位置变化距离（使用高精度的球面距离测算）
                         let positionChanged = false;
                         if (lastLatitude !== null && lastLongitude !== null) {
-                            const latDiff = latitude - lastLatitude;
-                            const lonDiff = longitude - lastLongitude;
-                            const distance = Math.sqrt(latDiff * latDiff + lonDiff * lonDiff);
-                            positionChanged = distance > MIN_DISTANCE_CHANGE;
-
-                            console.log('📍 [GPS更新] 位置变化检测:', {
-                                distance: (distance * 111000).toFixed(2) + '米', // 转换为米
-                                changed: positionChanged,
-                                old: { lat: lastLatitude, lon: lastLongitude },
-                                new: { lat: latitude, lon: longitude }
+                            const dist = calculateDistance(latitude, longitude, lastLatitude, lastLongitude);
+                            
+                            // [抗漂移处理]：如果与上次上传位置距离极近，则视为原地抖动噪声，不进行重绘和上传
+                            if (dist < 3) { // 3米死区过滤器
+                                console.log(`[GPS Tracking] 忽视微量漂移/静止状态: ${dist.toFixed(2)}m`);
+                                return;
+                            }
+                            
+                            positionChanged = true;
+                            console.log('📍 [GPS更新] 位置真实变化检测:', {
+                                distance: dist.toFixed(2) + '米',
+                                accuracy: accuracy.toFixed(1) + '米',
+                                timestamp: new Date().toLocaleTimeString()
                             });
                         } else {
                             // 第一次获取位置，总是更新

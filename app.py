@@ -153,18 +153,20 @@ if WEBSOCKET_ENABLED:
         )
     else:
         # 本地开发或其他环境：优先使用 WebSocket，失败时降级到轮询
+        # 注意：Windows 上使用 threading 模式更稳定，eventlet 在 Windows 上可能导致连接问题
         socketio = SocketIO(
             app, 
             cors_allowed_origins="*", 
-            async_mode='eventlet',
-            ping_timeout=120,  # ping 超时时间（秒）- 优化为120秒（2分钟），更快检测断开
-            ping_interval=30,  # ping 间隔（秒）- 优化为30秒，更频繁的心跳保持连接活跃
+            async_mode='threading',  # Windows 上使用 threading 更稳定
+            ping_timeout=60,  # ping 超时时间（秒）- 1分钟
+            ping_interval=25,  # ping 间隔（秒）- 每25秒发送心跳
             max_http_buffer_size=1e6,  # 最大 HTTP 缓冲区大小（1MB）
             logger=False,  # 禁用 SocketIO 内部日志（使用我们的 logger）
             engineio_logger=False,  # 禁用 EngineIO 日志
             allow_upgrades=True,  # 允许协议升级
             transports=['websocket', 'polling'],  # 允许的传输方式
-            cors_credentials=True  # 允许携带凭证
+            cors_credentials=True,  # 允许携带凭证
+            manage_session=False  # 禁用服务器端会话管理，避免 400 错误
         )
 else:
     socketio = None
@@ -1350,14 +1352,15 @@ if __name__ == '__main__':
     # 启动Flask应用（支持WebSocket和HTTPS）
     if socketio:
         if use_https:
+            # threading 模式下使用 ssl_context 而不是 keyfile/certfile
+            ssl_context = (ssl_cert, ssl_key)
             socketio.run(
                 app, 
                 debug=True, 
                 host='0.0.0.0', 
                 port=5000, 
                 allow_unsafe_werkzeug=True,
-                keyfile=ssl_key,
-                certfile=ssl_cert
+                ssl_context=ssl_context
             )
         else:
             socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
